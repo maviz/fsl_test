@@ -1,52 +1,65 @@
 # frozen_string_literal: true
 
 class UrlsController < ApplicationController
+
+  before_action :load_urls, before: [:index, :create]
+
   def index
-    # recent 10 short urls
     @url = Url.new
-    @urls = [
-      Url.new(short_url: 'ABCDE', original_url: 'http://google.com', created_at: Time.now),
-      Url.new(short_url: 'ABCDG', original_url: 'http://facebook.com', created_at: Time.now),
-      Url.new(short_url: 'ABCDF', original_url: 'http://yahoo.com', created_at: Time.now)
-    ]
   end
 
   def create
-    raise 'add some code'
-    # create a new URL record
+    @url = Url.new(original_url: permitted_params[:original_url])
+    if @url.save
+      flash[:notice] = 'Created successfully'
+      render :index
+    else
+      flash[:notice] = 'Creation failed!'
+      render :index
+    end
   end
 
   def show
-    @url = Url.new(short_url: 'ABCDE', original_url: 'http://google.com', created_at: Time.now)
-    # implement queries
-    @daily_clicks = [
-      ['1', 13],
-      ['2', 2],
-      ['3', 1],
-      ['4', 7],
-      ['5', 20],
-      ['6', 18],
-      ['7', 10],
-      ['8', 20],
-      ['9', 15],
-      ['10', 5]
-    ]
-    @browsers_clicks = [
-      ['IE', 13],
-      ['Firefox', 22],
-      ['Chrome', 17],
-      ['Safari', 7]
-    ]
-    @platform_clicks = [
-      ['Windows', 13],
-      ['macOS', 22],
-      ['Ubuntu', 17],
-      ['Other', 7]
-    ]
+    @daily_clicks =  Url.order(created_at: :desc).limit(10).map{|_| [_.short_url, _.clicks_count]}
+
+    @browsers_clicks = Url.joins(:clicks).group("clicks.browser").select("clicks.browser as b_name, count(clicks.id) as total_c").map{|_| [_.b_name, _.total_c]}
+
+    @platform_clicks = Url.joins(:clicks).group("clicks.platform").select("clicks.platform as b_name, count(clicks.id) as total_c").map{|_| [_.b_name, _.total_c]}
   end
 
   def visit
     # params[:short_url]
-    render plain: 'redirecting to url...'
+
+    @url = Url.find_by(short_url: params[:short_url])
+
+    if @url.nil?
+      render file:'public/404.html', status: :not_found
+    else
+      create_click
+      redirect_to @url.original_url
+    end
+  end
+
+  private
+
+  def permitted_params
+    params.require(:url).permit("original_url")
+  end
+
+  def load_urls
+    @urls = Url.order(created_at: :desc).limit(10)
+  end
+
+  def create_click
+    Click.create!(url_id: @url.id, browser: browser_name, platform: platform_name)
+    @url.update(clicks_count: @url.clicks_count + 1)
+  end
+
+  def browser_name
+    browser.name rescue 'N/A'
+  end
+
+  def platform_name
+    browser.platform.name rescue 'N/A'
   end
 end
